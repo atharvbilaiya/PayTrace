@@ -1,0 +1,23 @@
+# Dependencies & Environments
+node_modules/
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Operating System & IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment Variables
+.env
+.env.local
