@@ -11,11 +11,101 @@ const EXAMPLE_TXNS = [
   { id: 'TXN_1009', label: 'TXN_1009 (Conflicting Records)' },
 ]
 
+function generateVerifiedSummary(result) {
+  if (!result) return ''
+
+  const { transaction_id, final_status, confidence, exceptions, records, recommended_action } = result
+  const gw = records?.gateway
+  const bank = records?.bank
+  const ledger = records?.ledger
+
+  const parts = []
+
+  // 1. Transaction & Gateway State
+  if (gw) {
+    const amtStr = `${gw.currency || 'INR'} ${gw.amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+    if (gw.status === 'SUCCESS') {
+      parts.push(`Transaction ${transaction_id} was successfully authorized by the payment gateway for ${amtStr}.`)
+    } else if (gw.status === 'FAILED') {
+      const reasonStr = gw.failure_reason ? ` due to ${gw.failure_reason}` : ''
+      parts.push(`Transaction ${transaction_id} failed at the payment gateway level for ${amtStr}${reasonStr}.`)
+    } else {
+      parts.push(`Transaction ${transaction_id} is currently processing at the payment gateway level.`)
+    }
+  } else {
+    parts.push(`Transaction ${transaction_id} has no record in gateway authorization logs.`)
+  }
+
+  // 2. Downstream System Findings & Classification
+  if (final_status === 'SETTLED') {
+    const bankRef = bank?.bank_reference ? ` (UTR: ${bank.bank_reference})` : ''
+    const ledgerId = ledger?.ledger_entry_id ? ` (Entry: ${ledger.ledger_entry_id})` : ''
+    parts.push(`Funds were settled by the bank${bankRef} and credited to the internal ledger${ledgerId}. PayTrace reconciled all records with ${confidence.toLowerCase()} confidence and classified the transaction as SETTLED.`)
+  } else if (final_status === 'BANK_SETTLEMENT_PENDING') {
+    parts.push(`Payment settlement remains in-flight at the bank within the standard 48-hour SLA window. PayTrace determined the status as BANK_SETTLEMENT_PENDING with ${confidence.toLowerCase()} confidence.`)
+  } else if (final_status === 'SETTLEMENT_EXCEPTION') {
+    if (exceptions.includes('MISSING_LEDGER')) {
+      parts.push(`The bank successfully settled the payment, but no matching entry was recorded in the internal ledger. PayTrace flagged this as a Settlement Exception (Missing Ledger) with ${confidence.toLowerCase()} confidence.`)
+    } else if (exceptions.includes('AMOUNT_MISMATCH')) {
+      const gwAmt = gw ? `${gw.currency} ${gw.amount}` : ''
+      const bankAmt = bank ? `${bank.currency} ${bank.amount}` : ''
+      const ledgerAmt = ledger ? `${ledger.currency} ${ledger.amount}` : ''
+      parts.push(`Financial record discrepancies were detected across systems (Gateway: ${gwAmt}, Bank: ${bankAmt}, Ledger: ${ledgerAmt}). PayTrace flagged this as a Settlement Exception (Amount Mismatch) with ${confidence.toLowerCase()} confidence.`)
+    } else if (exceptions.includes('SLA_BREACH')) {
+      parts.push(`Bank settlement has remained pending for over 48 hours past the authorized payment timestamp. PayTrace flagged this as an SLA Breach Settlement Exception with ${confidence.toLowerCase()} confidence.`)
+    } else if (exceptions.includes('BANK_REJECTED')) {
+      parts.push(`The bank settlement batch was rejected during processing. PayTrace classified this as a Settlement Exception (Bank Rejected) with ${confidence.toLowerCase()} confidence.`)
+    } else {
+      parts.push(`A settlement exception was detected during cross-system reconciliation with ${confidence.toLowerCase()} confidence.`)
+    }
+  } else if (final_status === 'PAYMENT_FAILED') {
+    if (exceptions.includes('PHANTOM_RECORD_CONFLICT')) {
+      parts.push(`Although the gateway payment failed, unexpected downstream bank or ledger entries were detected. PayTrace flagged this as a Phantom Record Conflict with ${confidence.toLowerCase()} confidence.`)
+    } else {
+      parts.push(`No downstream bank settlement or ledger posting occurred. PayTrace classified this as PAYMENT_FAILED with ${confidence.toLowerCase()} confidence.`)
+    }
+  } else if (final_status === 'INVESTIGATION_UNCERTAIN') {
+    if (exceptions.includes('CONFLICTING_RECORDS')) {
+      parts.push(`Multiple duplicate or conflicting settlement records were found across datasets. PayTrace classified this transaction as INVESTIGATION_UNCERTAIN with ${confidence.toLowerCase()} confidence due to data ambiguity.`)
+    } else if (exceptions.includes('MISSING_GATEWAY_RECORD')) {
+      parts.push(`Downstream bank or ledger records were found, but the primary gateway authorization record is missing. PayTrace classified this transaction as INVESTIGATION_UNCERTAIN with ${confidence.toLowerCase()} confidence.`)
+    } else {
+      parts.push(`Data ambiguity or unmapped records prevented conclusive resolution. PayTrace classified this transaction as INVESTIGATION_UNCERTAIN with ${confidence.toLowerCase()} confidence.`)
+    }
+  }
+
+  // 3. Recommended Next Step
+  if (recommended_action) {
+    parts.push(`Recommended Next Step: ${recommended_action}`)
+  }
+
+  return parts.join(' ')
+}
+
 function App() {
   const [txnId, setTxnId] = useState('TXN_1001')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+
+  // Dashboard states
+  const [dashboardData, setDashboardData] = useState(null)
+  const [dashboardError, setDashboardError] = useState(null)
+
+  const fetchDashboardSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard/summary`)
+      if (res.ok) {
+        const data = await res.json()
+        setDashboardData(data)
+        setDashboardError(null)
+      } else {
+        setDashboardError('Dashboard data temporarily unavailable.')
+      }
+    } catch {
+      setDashboardError('Dashboard data temporarily unavailable.')
+    }
+  }
 
   const investigate = async (idToSearch) => {
     const targetId = (idToSearch || txnId).trim()
@@ -49,6 +139,7 @@ function App() {
 
   // Initial load
   useEffect(() => {
+    fetchDashboardSummary()
     investigate('TXN_1001')
   }, [])
 
@@ -57,7 +148,7 @@ function App() {
     investigate(txnId)
   }
 
-  const handleChipClick = (id) => {
+  const handleTxnSelect = (id) => {
     setTxnId(id)
     investigate(id)
   }
@@ -72,6 +163,70 @@ function App() {
         </div>
         <div className="demo-badge">Mock Data Demo</div>
       </header>
+
+      {/* Support Dashboard */}
+      {dashboardError ? (
+        <div className="dashboard-error-banner">{dashboardError}</div>
+      ) : dashboardData ? (
+        <section className="dashboard-section">
+          <div className="dashboard-header">
+            <div className="dashboard-title">
+              Support Operations Overview
+              <span className="total-badge">{dashboardData.total_transactions} Total Transactions</span>
+            </div>
+          </div>
+
+          <div className="dashboard-grid">
+            <div className="stat-card SETTLED">
+              <span className="stat-label">SETTLED</span>
+              <span className="stat-count">{dashboardData.status_counts?.SETTLED || 0}</span>
+            </div>
+            <div className="stat-card BANK_SETTLEMENT_PENDING">
+              <span className="stat-label">BANK PENDING</span>
+              <span className="stat-count">{dashboardData.status_counts?.BANK_SETTLEMENT_PENDING || 0}</span>
+            </div>
+            <div className="stat-card PAYMENT_FAILED">
+              <span className="stat-label">PAYMENT FAILED</span>
+              <span className="stat-count">{dashboardData.status_counts?.PAYMENT_FAILED || 0}</span>
+            </div>
+            <div className="stat-card PAYMENT_PENDING">
+              <span className="stat-label">GATEWAY PENDING</span>
+              <span className="stat-count">{dashboardData.status_counts?.PAYMENT_PENDING || 0}</span>
+            </div>
+            <div className="stat-card SETTLEMENT_EXCEPTION">
+              <span className="stat-label">EXCEPTIONS</span>
+              <span className="stat-count">{dashboardData.status_counts?.SETTLEMENT_EXCEPTION || 0}</span>
+            </div>
+            <div className="stat-card INVESTIGATION_UNCERTAIN">
+              <span className="stat-label">UNCERTAIN</span>
+              <span className="stat-count">{dashboardData.status_counts?.INVESTIGATION_UNCERTAIN || 0}</span>
+            </div>
+          </div>
+
+          {dashboardData.recent_transactions && dashboardData.recent_transactions.length > 0 && (
+            <div className="recent-txns-section">
+              <div className="recent-title">Quick Select Recent Transactions (Click to Investigate)</div>
+              <div className="recent-cards-scroll">
+                {dashboardData.recent_transactions.map((t) => (
+                  <div
+                    key={t.transaction_id}
+                    className="recent-txn-card"
+                    onClick={() => handleTxnSelect(t.transaction_id)}
+                  >
+                    <span className="recent-tid">{t.transaction_id}</span>
+                    <span className={`recent-status-pill ${t.final_status}`}>
+                      {t.final_status}
+                    </span>
+                    <span className="recent-amt">
+                      {t.currency} {t.amount?.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {/* Hero / Search Section */}
       <section className="search-hero">
@@ -98,7 +253,7 @@ function App() {
               key={item.id}
               type="button"
               className="chip-btn"
-              onClick={() => handleChipClick(item.id)}
+              onClick={() => handleTxnSelect(item.id)}
             >
               {item.id}
             </button>
@@ -137,6 +292,15 @@ function App() {
                 {result.confidence} Confidence
               </span>
             </div>
+          </div>
+
+          {/* Verified Investigation Summary */}
+          <div className="verified-summary-box">
+            <div className="summary-header">
+              <h3>Investigation Summary</h3>
+              <span className="trust-indicator">🛡️ Based on verified Gateway, Bank and Ledger records</span>
+            </div>
+            <p className="summary-text">{generateVerifiedSummary(result)}</p>
           </div>
 
           {/* Recommended Action */}
