@@ -82,6 +82,24 @@ function generateVerifiedSummary(result) {
   return parts.join(' ')
 }
 
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'SETTLED':
+      return '✓'
+    case 'BANK_SETTLEMENT_PENDING':
+    case 'PAYMENT_PENDING':
+      return '⏱️'
+    case 'SETTLEMENT_EXCEPTION':
+      return '⚠️'
+    case 'PAYMENT_FAILED':
+      return '❌'
+    case 'INVESTIGATION_UNCERTAIN':
+      return '❓'
+    default:
+      return '🔍'
+  }
+}
+
 function App() {
   const [txnId, setTxnId] = useState('TXN_1001')
   const [loading, setLoading] = useState(false)
@@ -111,6 +129,7 @@ function App() {
     const targetId = (idToSearch || txnId).trim()
     if (!targetId) return
 
+    setTxnId(targetId)
     setLoading(true)
     setError(null)
 
@@ -159,9 +178,14 @@ function App() {
       <header className="app-header">
         <div className="brand-section">
           <span className="logo-text">PayTrace</span>
-          <span className="subtitle">Settlement Investigation & Support</span>
+          <span className="subtitle">Settlement Investigation & Support Engine</span>
         </div>
-        <div className="demo-badge">Mock Data Demo</div>
+        <div className="header-meta">
+          <span className="live-indicator">
+            <span className="pulse-dot"></span> Live Engine
+          </span>
+          <div className="demo-badge">Mock Data Demo</div>
+        </div>
       </header>
 
       {/* Support Dashboard */}
@@ -211,6 +235,7 @@ function App() {
                   <div
                     key={t.transaction_id}
                     className="recent-txn-card"
+                    style={{ pointerEvents: loading ? 'none' : 'auto', opacity: loading ? 0.7 : 1 }}
                     onClick={() => handleTxnSelect(t.transaction_id)}
                   >
                     <span className="recent-tid">{t.transaction_id}</span>
@@ -230,8 +255,8 @@ function App() {
 
       {/* Hero / Search Section */}
       <section className="search-hero">
-        <h2>Investigate a transaction</h2>
-        <p>Enter a transaction ID to perform instant cross-system reconciliation across Gateway, Bank, and Ledger records.</p>
+        <h2>Investigate a Transaction</h2>
+        <p>Enter a transaction ID to perform real-time cross-system reconciliation across Gateway, Bank, and Internal Ledger records.</p>
         
         <form className="search-form" onSubmit={handleFormSubmit}>
           <input
@@ -239,6 +264,7 @@ function App() {
             className="search-input"
             placeholder="e.g. TXN_1001"
             value={txnId}
+            disabled={loading}
             onChange={(e) => setTxnId(e.target.value)}
           />
           <button type="submit" className="search-btn" disabled={loading}>
@@ -247,12 +273,13 @@ function App() {
         </form>
 
         <div className="sample-chips">
-          <span className="chips-label">Sample Scenarios:</span>
+          <span className="chips-label">Quick Load Scenario:</span>
           {EXAMPLE_TXNS.map((item) => (
             <button
               key={item.id}
               type="button"
               className="chip-btn"
+              disabled={loading}
               onClick={() => handleTxnSelect(item.id)}
             >
               {item.id}
@@ -263,79 +290,189 @@ function App() {
 
       {/* Loading State */}
       {loading && (
-        <div className="state-box">
-          <div className="loading-spinner"></div>
-          <p style={{ color: 'var(--text-muted)' }}>Cross-referencing Gateway, Bank, and Internal Ledger records...</p>
+        <div className="investigation-loading-panel">
+          <div className="loading-panel-header">
+            <div className="loading-spinner-sm"></div>
+            <div className="loading-header-title">
+              <span>Executing Cross-System Investigation...</span>
+              <span className="loading-target-id">Target: {txnId}</span>
+            </div>
+          </div>
+          <div className="loading-stages-grid">
+            <div className="loading-stage">
+              <span className="stage-dot"></span>
+              <span className="stage-text">1. Connecting to Gateway Records</span>
+            </div>
+            <div className="loading-stage">
+              <span className="stage-dot"></span>
+              <span className="stage-text">2. Checking Bank Settlement</span>
+            </div>
+            <div className="loading-stage">
+              <span className="stage-dot"></span>
+              <span className="stage-text">3. Reconciling Internal Ledger</span>
+            </div>
+            <div className="loading-stage">
+              <span className="stage-dot"></span>
+              <span className="stage-text">4. Evaluating Investigation Rules</span>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && !result && !error && (
+        <section className="empty-workspace-container">
+          <div className="empty-workspace-header">
+            <span className="empty-icon">🔍</span>
+            <h3>Ready for Settlement Investigation</h3>
+            <p>Enter a Transaction ID above or click any sample scenario to initiate real-time three-way reconciliation.</p>
+          </div>
+
+          <div className="empty-systems-grid">
+            <div className="empty-system-card">
+              <div className="empty-sys-icon">💳</div>
+              <h4>Payment Gateway</h4>
+              <p>Traces authorization status, failure codes, amounts, and gateway reference IDs.</p>
+            </div>
+            <div className="empty-system-card">
+              <div className="empty-sys-icon">🏦</div>
+              <h4>Bank Settlement</h4>
+              <p>Checks bank settlement batches, UTRs, clearing records, and 48-hour SLA status.</p>
+            </div>
+            <div className="empty-system-card">
+              <div className="empty-sys-icon">📘</div>
+              <h4>Internal Ledger</h4>
+              <p>Verifies internal accounting ledger entries, entry IDs, and credited balance postings.</p>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Error State */}
       {!loading && error && (
-        <div className="state-box">
-          <div className="error-title">Investigation Failed</div>
-          <div className="error-desc">{error}</div>
+        <div className="error-workspace-box">
+          <div className="error-header-row">
+            <div className="error-title-group">
+              <span className="error-icon">⚠️</span>
+              <h3>
+                {error.includes('not found') ? 'Transaction Not Found' : 'Backend Service Unavailable'}
+              </h3>
+            </div>
+            <span className="error-target-pill">Target ID: {txnId}</span>
+          </div>
+
+          <div className="error-body">
+            <p className="error-desc-text">{error}</p>
+            
+            <div className="error-action-hint">
+              <span className="hint-label">Suggested Resolution:</span>
+              <p>
+                {error.includes('not found')
+                  ? 'Please verify the Transaction ID spelling or select one of the sample scenarios above (e.g. TXN_1001, TXN_1005).'
+                  : 'Ensure the FastAPI backend server is running on http://localhost:8000 (e.g. uvicorn main:app --port 8000).'}
+              </p>
+            </div>
+
+            <div className="error-actions-row">
+              <button
+                type="button"
+                className="retry-btn"
+                onClick={() => investigate(txnId)}
+              >
+                🔄 Try Again
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
 
       {/* Results Section */}
       {!loading && result && (
         <main className="results-container">
+          <div className="results-dossier-header">
+            <span className="dossier-badge">RECONCILIATION DOSSIER</span>
+            <span className="dossier-subtext">Active Investigation Results</span>
+          </div>
+
           {/* Status Hero Banner */}
           <div className={`status-hero ${result.final_status}`}>
             <div className="status-main">
-              <span className="status-label">Final Investigation Status</span>
-              <span className="status-value">{result.final_status}</span>
+              <span className="status-label">FINAL RECONCILIATION STATUS</span>
+              <div className="status-value-group">
+                <span className="status-icon">{getStatusIcon(result.final_status)}</span>
+                <span className="status-value">{result.final_status}</span>
+              </div>
             </div>
             <div className="status-meta">
-              <span className="txn-id-pill">{result.transaction_id}</span>
+              <div className="meta-tid-group">
+                <span className="meta-label">Transaction Ref</span>
+                <span className="txn-id-pill">{result.transaction_id}</span>
+              </div>
               <span className={`confidence-badge ${result.confidence}`}>
+                {result.confidence === 'HIGH' ? '✓ ' : result.confidence === 'MEDIUM' ? '⚠️ ' : '🚨 '}
                 {result.confidence} Confidence
               </span>
             </div>
           </div>
 
-          {/* Verified Investigation Summary */}
-          <div className="verified-summary-box">
-            <div className="summary-header">
-              <h3>Investigation Summary</h3>
-              <span className="trust-indicator">🛡️ Based on verified Gateway, Bank and Ledger records</span>
-            </div>
-            <p className="summary-text">{generateVerifiedSummary(result)}</p>
-          </div>
-
-          {/* Recommended Action */}
-          {result.recommended_action && (
-            <div className="recommended-action-box">
-              <div className="action-icon">🎯</div>
-              <div className="action-content">
-                <h4>Recommended Action</h4>
-                <p>{result.recommended_action}</p>
+          {/* Executive Summary Block */}
+          <section className="executive-summary-section">
+            <div className="section-header-block">
+              <span className="section-step-tag">01</span>
+              <div className="section-title-group">
+                <h3 className="section-title">Executive Summary & Operational Plan</h3>
+                <span className="section-subtitle">Verified findings and recommended next steps</span>
               </div>
             </div>
-          )}
 
-          {/* Exceptions List */}
-          {result.exceptions && result.exceptions.length > 0 && (
-            <div className="exceptions-container">
-              <div className="section-title">Detected Exception Tags</div>
-              <div className="exceptions-tags">
-                {result.exceptions.map((exc, idx) => (
-                  <span key={idx} className="exception-tag">
-                    {exc}
-                  </span>
-                ))}
+            <div className="verified-summary-box">
+              <div className="summary-header">
+                <h3>Cross-System Synthesis</h3>
+                <span className="trust-indicator">🛡️ Verified Audit Record</span>
               </div>
+              <p className="summary-text">{generateVerifiedSummary(result)}</p>
             </div>
-          )}
+
+            {result.recommended_action && (
+              <div className="recommended-action-box">
+                <div className="action-icon">🎯</div>
+                <div className="action-content">
+                  <h4>Recommended Operational Action</h4>
+                  <p>{result.recommended_action}</p>
+                </div>
+              </div>
+            )}
+
+            {result.exceptions && result.exceptions.length > 0 && (
+              <div className="exceptions-container">
+                <div className="exceptions-title">Detected Exception Flags ({result.exceptions.length})</div>
+                <div className="exceptions-tags">
+                  {result.exceptions.map((exc, idx) => (
+                    <span key={idx} className="exception-tag">
+                      ⚠️ {exc}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
 
           {/* System Trace Section */}
           <section className="system-trace-section">
-            <div className="section-title">System Reconciliation Trace</div>
+            <div className="section-header-block">
+              <span className="section-step-tag">02</span>
+              <div className="section-title-group">
+                <h3 className="section-title">System Record Trace</h3>
+                <span className="section-subtitle">Atomic record status across Gateway, Bank, and Ledger</span>
+              </div>
+            </div>
+
             <div className="system-trace-grid">
               {/* Gateway Stage */}
               <div className="trace-card">
                 <div className="trace-card-header">
-                  <span className="stage-name">Gateway Authorization</span>
+                  <span className="stage-name">💳 Gateway Authorization</span>
                   {result.records.gateway ? (
                     <span className={`stage-badge ${result.records.gateway.status}`}>
                       {result.records.gateway.status}
@@ -375,7 +512,7 @@ function App() {
               {/* Bank Settlement Stage */}
               <div className="trace-card">
                 <div className="trace-card-header">
-                  <span className="stage-name">Bank Settlement</span>
+                  <span className="stage-name">🏦 Bank Settlement</span>
                   {result.records.bank ? (
                     <span className={`stage-badge ${result.records.bank.status}`}>
                       {result.records.bank.status}
@@ -409,7 +546,7 @@ function App() {
               {/* Internal Ledger Stage */}
               <div className="trace-card">
                 <div className="trace-card-header">
-                  <span className="stage-name">Internal Ledger</span>
+                  <span className="stage-name">📘 Internal Ledger</span>
                   {result.records.ledger ? (
                     <span className={`stage-badge ${result.records.ledger.status}`}>
                       {result.records.ledger.status}
@@ -442,10 +579,213 @@ function App() {
             </div>
           </section>
 
+          {/* Financial Reconciliation Analysis Section */}
+          {result.discrepancy_analysis && (
+            <section className="financial-analysis-section">
+              <div className="section-header-block">
+                <span className="section-step-tag">03</span>
+                <div className="section-title-group">
+                  <h3 className="section-title">Financial Variance Analysis</h3>
+                  <span className="section-subtitle">Three-way amount and currency reconciliation</span>
+                </div>
+              </div>
+
+              <div className={`discrepancy-card ${result.discrepancy_analysis.type}`}>
+                {result.discrepancy_analysis.type === 'RECONCILED' && (
+                  <>
+                    <div className="disc-header-title">
+                      ✓ All available financial records reconcile successfully
+                    </div>
+                    <div className="reconciled-pills">
+                      <span className="amount-pill">
+                        Gateway → {result.discrepancy_analysis.amount_comparison.currency} {result.discrepancy_analysis.amount_comparison.gateway_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="amount-pill">
+                        Bank → {result.discrepancy_analysis.amount_comparison.currency} {result.discrepancy_analysis.amount_comparison.bank_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="amount-pill">
+                        Ledger → {result.discrepancy_analysis.amount_comparison.currency} {result.discrepancy_analysis.amount_comparison.ledger_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {result.discrepancy_analysis.type === 'AMOUNT_MISMATCH' && (
+                  <>
+                    <div className="disc-header-title">
+                      🚨 Financial Variance Detected
+                    </div>
+                    <div className="sys-amt-grid">
+                      <div className="sys-amt-card">
+                        <span className="sys-amt-name">Gateway Authorization</span>
+                        <span className="sys-amt-val">
+                          {result.discrepancy_analysis.amount_comparison.currency} {result.discrepancy_analysis.amount_comparison.gateway_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="sys-amt-card">
+                        <span className="sys-amt-name">Bank Settlement</span>
+                        <span className="sys-amt-val">
+                          {result.discrepancy_analysis.amount_comparison.currency} {result.discrepancy_analysis.amount_comparison.bank_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="sys-amt-card">
+                        <span className="sys-amt-name">Internal Ledger</span>
+                        <span className="sys-amt-val">
+                          {result.discrepancy_analysis.amount_comparison.currency} {result.discrepancy_analysis.amount_comparison.ledger_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                    {result.discrepancy_analysis.variances && result.discrepancy_analysis.variances.map((v, idx) => (
+                      <div key={idx} className="variance-card">
+                        <div className="variance-header">
+                          <span className="variance-comp">Variance: {v.comparison}</span>
+                          <span className="shortfall-badge">
+                            {result.discrepancy_analysis.amount_comparison.currency} {v.absolute_difference?.toLocaleString('en-IN', { minimumFractionDigits: 2 })} {v.difference < 0 ? 'SHORTFALL' : 'VARIANCE'}
+                          </span>
+                        </div>
+                        <div className="variance-details">{v.details}</div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {result.discrepancy_analysis.type === 'MISSING_RECORD' && (
+                  <>
+                    <div className="disc-header-title">
+                      ⚠️ Missing System Record ({result.discrepancy_analysis.missing_records?.join(', ')})
+                    </div>
+                    <div className="disc-summary-desc">{result.discrepancy_analysis.summary}</div>
+                  </>
+                )}
+
+                {result.discrepancy_analysis.type === 'SETTLEMENT_DELAY' && (
+                  <>
+                    <div className="disc-header-title">
+                      ⏱️ Settlement Processing Delay
+                    </div>
+                    <div className="disc-summary-desc">{result.discrepancy_analysis.summary}</div>
+                  </>
+                )}
+
+                {result.discrepancy_analysis.type === 'DATA_CONFLICT' && (
+                  <>
+                    <div className="disc-header-title">
+                      ⛔ Financial Comparison Unavailable (Data Ambiguity)
+                    </div>
+                    <div className="disc-summary-desc">{result.discrepancy_analysis.summary}</div>
+                  </>
+                )}
+
+                {result.discrepancy_analysis.type === 'CURRENCY_MISMATCH' && (
+                  <>
+                    <div className="disc-header-title">
+                      🌐 Currency Mismatch Detected
+                    </div>
+                    <div className="disc-summary-desc">{result.discrepancy_analysis.summary}</div>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Root Cause & Operational Impact Section */}
+          {result.root_cause_analysis && (
+            <section className="root-cause-section">
+              <div className="section-header-block">
+                <span className="section-step-tag">04</span>
+                <div className="section-title-group">
+                  <h3 className="section-title">Root Cause & Operational Impact</h3>
+                  <span className="section-subtitle">Deterministic failure diagnosis and operational action plan</span>
+                </div>
+              </div>
+
+              <div className={`root-cause-card ${result.root_cause_analysis.severity}`}>
+                <div className="root-cause-header">
+                  <div className="badge-group">
+                    <span className={`rc-severity-badge ${result.root_cause_analysis.severity}`}>
+                      {result.root_cause_analysis.severity === 'HIGH' ? '🚨 ' : result.root_cause_analysis.severity === 'MEDIUM' ? '⚠️ ' : ''}
+                      {result.root_cause_analysis.severity} SEVERITY
+                    </span>
+                    <span className="rc-category-badge">
+                      {result.root_cause_analysis.category}
+                    </span>
+                  </div>
+                  <span className="primary-sys-tag">
+                    Primary System: <strong>{result.root_cause_analysis.primary_system}</strong>
+                  </span>
+                </div>
+
+                <div className="root-cause-content-grid">
+                  <div className="rc-block cause-block">
+                    <div className="rc-block-title">
+                      🔍 Diagnostic Root Cause
+                    </div>
+                    <div className="rc-block-text">
+                      {result.root_cause_analysis.root_cause}
+                    </div>
+                  </div>
+
+                  <div className="rc-block impact-block">
+                    <div className="rc-block-title">
+                      ⚡ Operational Impact
+                    </div>
+                    <div className="rc-block-text">
+                      {result.root_cause_analysis.operational_impact}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Investigation Decision Trace Stepper */}
+          {result.rule_evaluation_trace && result.rule_evaluation_trace.length > 0 && (
+            <section className="decision-trace-section">
+              <div className="section-header-block">
+                <span className="section-step-tag">05</span>
+                <div className="section-title-group">
+                  <h3 className="section-title">Investigation Decision Trace</h3>
+                  <span className="section-subtitle">Deterministic rule evaluation based on verified system records</span>
+                </div>
+              </div>
+
+              <div className="trace-stepper-list">
+                {result.rule_evaluation_trace.map((stepItem) => (
+                  <div key={stepItem.step} className={`trace-stepper-item ${stepItem.result}`}>
+                    <div className="trace-step-node"></div>
+                    <div className="trace-item-header">
+                      <div className="trace-item-title-group">
+                        <span className="step-num-pill">Step {stepItem.step}</span>
+                        <span className="rule-name">{stepItem.rule}</span>
+                      </div>
+                      <span className={`result-badge ${stepItem.result}`}>
+                        {stepItem.result}
+                      </span>
+                    </div>
+                    <div className="trace-item-details">{stepItem.details}</div>
+                    {stepItem.elapsed_hours !== undefined && (
+                      <div className="sla-metadata-badge">
+                        <span>Elapsed: {stepItem.elapsed_hours}h</span>
+                        <span>SLA Threshold: {stepItem.threshold_hours}h</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Investigation Timeline */}
           {result.timeline && result.timeline.length > 0 && (
             <section className="timeline-section">
-              <div className="section-title">Visual Audit Timeline</div>
+              <div className="section-header-block">
+                <span className="section-step-tag">06</span>
+                <div className="section-title-group">
+                  <h3 className="section-title">Visual Audit Timeline</h3>
+                  <span className="section-subtitle">Sequential event progression across payment stages</span>
+                </div>
+              </div>
+
               <div className="timeline-list">
                 {result.timeline.map((stepItem, idx) => (
                   <div key={idx} className={`timeline-item ${stepItem.status}`}>
@@ -469,3 +809,4 @@ function App() {
 }
 
 export default App
+
