@@ -1,23 +1,41 @@
-# Dependencies & Environments
+# Dependencies
 node_modules/
-.venv/
+backend/venv/
 venv/
-ENV/
+.venv/
 env/
-__pycache__/
-*.py[cod]
 
-# Build outputs
+# Build and Production Output
+frontend/dist/
 dist/
 build/
 *.egg-info/
 
-# Operating System & IDEs
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
 # Environment Variables
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+!.env.example
+!frontend/.env.example
+!backend/.env.example
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System Files
+.DS_Store
+Thumbs.db

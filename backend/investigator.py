@@ -427,6 +427,79 @@ def build_root_cause_analysis(
     }
 
 
+def build_priority_assessment(result: Dict[str, Any]) -> Dict[str, Any]:
+    exceptions = result.get("exceptions", [])
+    final_status = result.get("final_status", "")
+    confidence = result.get("confidence", "")
+
+    reasons = []
+    score = 0
+
+    if "CONFLICTING_RECORDS" in exceptions:
+        score = max(score, 95)
+        reasons.append("Conflicting source records across datasets require immediate data team intervention.")
+
+    if "MISSING_GATEWAY_RECORD" in exceptions:
+        score = max(score, 95)
+        reasons.append("Downstream records exist without Gateway authorization.")
+
+    if "PHANTOM_RECORD_CONFLICT" in exceptions:
+        score = max(score, 85)
+        reasons.append("Downstream bank or ledger records exist for a failed gateway payment.")
+
+    if "AMOUNT_MISMATCH" in exceptions:
+        score = max(score, 80)
+        reasons.append("Financial variance detected across system records.")
+
+    if "MISSING_LEDGER" in exceptions:
+        score = max(score, 75)
+        reasons.append("Settled payment missing internal ledger entry.")
+
+    if "BANK_REJECTED" in exceptions:
+        score = max(score, 75)
+        reasons.append("Bank settlement batch rejected during clearing.")
+
+    if "SLA_BREACH" in exceptions:
+        score = max(score, 70)
+        reasons.append("Bank settlement pending for over 48 hours.")
+
+    if confidence == "LOW" and not reasons:
+        score = max(score, 90)
+        reasons.append("Low investigation confidence requires manual operational review.")
+
+    if not reasons:
+        if final_status == "PAYMENT_FAILED":
+            score = 50
+            reasons.append("Gateway payment authorization failed.")
+        elif final_status == "BANK_SETTLEMENT_PENDING":
+            score = 25
+            reasons.append("Bank settlement in-flight within standard 48h window.")
+        elif final_status == "PAYMENT_PENDING":
+            score = 25
+            reasons.append("Gateway payment processing in-flight.")
+        elif final_status == "SETTLED":
+            score = 0
+            reasons.append("Fully reconciled transaction.")
+        else:
+            score = 20
+            reasons.append("Standard operational monitoring.")
+
+    if score >= 90:
+        priority = "CRITICAL"
+    elif score >= 70:
+        priority = "HIGH"
+    elif score >= 40:
+        priority = "MEDIUM"
+    else:
+        priority = "LOW"
+
+    return {
+        "priority": priority,
+        "priority_score": score,
+        "reasons": reasons,
+    }
+
+
 def format_record(rec: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not rec:
         return None
@@ -690,6 +763,11 @@ def investigate_transaction(transaction_id: str) -> Optional[Dict[str, Any]]:
         gw_rec, bank_rec, ledger_rec, final_status, exceptions
     )
 
+    # Priority Assessment
+    priority_assessment = build_priority_assessment(
+        {"final_status": final_status, "confidence": confidence, "exceptions": exceptions}
+    )
+
     return {
         "transaction_id": transaction_id,
         "final_status": final_status,
@@ -705,5 +783,6 @@ def investigate_transaction(transaction_id: str) -> Optional[Dict[str, Any]]:
         "rule_evaluation_trace": rule_evaluation_trace,
         "discrepancy_analysis": discrepancy_analysis,
         "root_cause_analysis": root_cause_analysis,
+        "priority_assessment": priority_assessment,
     }
 
